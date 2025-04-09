@@ -49,17 +49,30 @@ cnpy::NPY_TYPES cnpy::map_type_to_npy_types(const std::type_info& t) {
     if(t == typeid(double) ) return NPY_DOUBLE;
     if(t == typeid(long double) ) return NPY_LONGDOUBLE;
 
-    if(t == typeid(int) ) return NPY_INT;
+    if(t == typeid(int) || t == typeid(int32_t) ) return NPY_INT;
     if(t == typeid(char) ) return NPY_INT;
     if(t == typeid(short) ) return NPY_INT;
-    if(t == typeid(long) ) return NPY_INT;
-    if(t == typeid(long long) ) return NPY_INT;
+    if(t == typeid(long) ) {
+#if defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64)
+        return NPY_INT;
+#else
+        return NPY_LONG;
+#endif
+    }
+
+    if(t == typeid(long long) || t == typeid(int64_t) ) return NPY_LONGLONG;
 
     if(t == typeid(unsigned char) ) return NPY_UINT;
     if(t == typeid(unsigned short) ) return NPY_UINT;
-    if(t == typeid(unsigned long) ) return NPY_UINT;
-    if(t == typeid(unsigned long long) ) return NPY_UINT;
-    if(t == typeid(unsigned int) ) return NPY_UINT;
+    if(t == typeid(unsigned long) ){
+#if defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64)
+        return NPY_UINT;
+#else
+        return NPY_ULONG;
+#endif
+    }
+    if(t == typeid(unsigned long long) || t == typeid(uint64_t) ) return NPY_UINT;
+    if(t == typeid(unsigned int) || t == typeid(uint32_t) ||  t == typeid(unsigned long)) return NPY_UINT;
 
     if(t == typeid(bool) ) return NPY_BOOL;
 
