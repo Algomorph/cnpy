@@ -21,9 +21,49 @@
 
 namespace cnpy {
 
+    enum NPY_TYPES {    NPY_BOOL=0,
+        NPY_BYTE, NPY_UBYTE,
+        NPY_SHORT, NPY_USHORT,
+        NPY_INT, NPY_UINT,
+        NPY_LONG, NPY_ULONG,
+        NPY_LONGLONG, NPY_ULONGLONG,
+        NPY_FLOAT, NPY_DOUBLE, NPY_LONGDOUBLE,
+        NPY_CFLOAT, NPY_CDOUBLE, NPY_CLONGDOUBLE,
+        NPY_OBJECT=17,
+        NPY_STRING, NPY_UNICODE,
+        NPY_VOID,
+        /*
+         * New 1.6 types appended, may be integrated
+         * into the above in 2.0.
+         */
+        NPY_DATETIME, NPY_TIMEDELTA, NPY_HALF,
+
+        NPY_CHAR, /* Deprecated, will raise if used */
+
+        /* The number of *legacy* dtypes */
+        NPY_NTYPES_LEGACY=24,
+
+        /* assign a high value to avoid changing this in the
+           future when new dtypes are added */
+        NPY_NOTYPE=25,
+
+        NPY_USERDEF=256,  /* leave room for characters */
+
+        /* The number of types not including the new 1.6 types */
+        NPY_NTYPES_ABI_COMPATIBLE=21,
+
+        /*
+         * New DTypes which do not share the legacy layout
+         * (added after NumPy 2.0).  VSTRING is the first of these
+         * we may open up a block for user-defined dtypes in the
+         * future.
+         */
+        NPY_VSTRING=2056,
+    };
+
     struct NpyArray {
-        NpyArray(const std::vector<size_t>& _shape, size_t _word_size, bool _fortran_order) :
-            shape(_shape), word_size(_word_size), fortran_order(_fortran_order)
+        NpyArray(const std::vector<size_t>& _shape, size_t _word_size, bool _fortran_order, NPY_TYPES _type) :
+            shape(_shape), word_size(_word_size), fortran_order(_fortran_order), type(_type)
         {
             num_vals = 1;
             for(size_t i = 0;i < shape.size();i++) num_vals *= shape[i];
@@ -57,6 +97,7 @@ namespace cnpy {
         std::vector<size_t> shape;
         size_t word_size;
         bool fortran_order;
+        NPY_TYPES type;
         size_t num_vals;
     };
    
@@ -64,9 +105,10 @@ namespace cnpy {
 
     char BigEndianTest();
     char map_type(const std::type_info& t);
+    NPY_TYPES map_type_to_npy_types(const std::type_info& t);
     template<typename T> std::vector<char> create_npy_header(const std::vector<size_t>& shape);
-    void parse_npy_header(FILE* fp,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order);
-    void parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order);
+    void parse_npy_header(FILE* fp,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type);
+    void parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type);
     void parse_zip_footer(FILE* fp, uint16_t& nrecs, size_t& global_header_size, size_t& global_header_offset);
     npz_t npz_load(std::string fname);
     NpyArray npz_load(std::string fname, std::string varname);
@@ -95,12 +137,17 @@ namespace cnpy {
             //file exists. we need to append to it. read the header, modify the array size
             size_t word_size;
             bool fortran_order;
-            parse_npy_header(fp,word_size,true_data_shape,fortran_order);
+            NPY_TYPES type;
+            parse_npy_header(fp,word_size,true_data_shape,fortran_order,type);
             assert(!fortran_order);
 
             if(word_size != sizeof(T)) {
                 std::cout<<"libnpy error: "<<fname<<" has word size "<<word_size<<" but npy_save appending data sized "<<sizeof(T)<<"\n";
                 assert( word_size == sizeof(T) );
+            }
+            if (type != map_type_to_npy_types(typeid(T))){
+                std::cout << "libnpy error: " << fname << " has type " << type << " but npy_save appending data of type " << map_type_to_npy_types(typeid(T)) << "\n";
+                assert (type == map_type_to_npy_types(typeid(T)));
             }
             if(true_data_shape.size() != shape.size()) {
                 std::cout<<"libnpy error: npy_save attempting to append misdimensioned data to "<<fname<<"\n";

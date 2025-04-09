@@ -44,6 +44,45 @@ char cnpy::map_type(const std::type_info& t)
     else return '?';
 }
 
+cnpy::NPY_TYPES cnpy::map_type_to_npy_types(const std::type_info& t) {
+    if(t == typeid(float) ) return NPY_FLOAT;
+    if(t == typeid(double) ) return NPY_DOUBLE;
+    if(t == typeid(long double) ) return NPY_LONGDOUBLE;
+
+    if(t == typeid(int) || t == typeid(int32_t) ) return NPY_INT;
+    if(t == typeid(char) ) return NPY_INT;
+    if(t == typeid(short) ) return NPY_INT;
+    if(t == typeid(long) ) {
+#if defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64)
+        return NPY_INT;
+#else
+        return NPY_LONG;
+#endif
+    }
+
+    if(t == typeid(long long) || t == typeid(int64_t) ) return NPY_LONGLONG;
+
+    if(t == typeid(unsigned char) ) return NPY_UINT;
+    if(t == typeid(unsigned short) ) return NPY_UINT;
+    if(t == typeid(unsigned long) ){
+#if defined(_MSC_VER) || defined(_WIN32) || defined(_WIN64)
+        return NPY_UINT;
+#else
+        return NPY_ULONG;
+#endif
+    }
+    if(t == typeid(unsigned long long) || t == typeid(uint64_t) ) return NPY_UINT;
+    if(t == typeid(unsigned int) || t == typeid(uint32_t) ||  t == typeid(unsigned long)) return NPY_UINT;
+
+    if(t == typeid(bool) ) return NPY_BOOL;
+
+    if(t == typeid(std::complex<float>) ) return NPY_CFLOAT;
+    if(t == typeid(std::complex<double>) ) return NPY_CDOUBLE;
+    if(t == typeid(std::complex<long double>) ) return NPY_CLONGDOUBLE;
+
+    else return NPY_NOTYPE;
+}
+
 template<> std::vector<char>& cnpy::operator+=(std::vector<char>& lhs, const std::string rhs) {
     lhs.insert(lhs.end(),rhs.begin(),rhs.end());
     return lhs;
@@ -59,7 +98,54 @@ template<> std::vector<char>& cnpy::operator+=(std::vector<char>& lhs, const cha
     return lhs;
 }
 
-void cnpy::parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order) {
+
+namespace cnpy{
+static NPY_TYPES get_type_from_type_char_and_word_size(char type_char, size_t word_size) {
+    cnpy::NPY_TYPES type;
+    using cnpy::NPY_TYPES;
+    if (type_char == 'f' && word_size == 4)
+        type = NPY_FLOAT;
+    else if (type_char == 'f' && word_size == 8)
+        type = NPY_DOUBLE;
+    else if (type_char == 'f' && word_size == 16)
+        type = NPY_LONGDOUBLE;
+    else if (type_char == 'i' && word_size == 1)
+        type = NPY_BYTE;
+    else if (type_char == 'i' && word_size == 2)
+        type = NPY_SHORT;
+    else if (type_char == 'i' && word_size == 4)
+        type = NPY_INT;
+    else if (type_char == 'i' && word_size == 8)
+        type = NPY_LONGLONG;
+    else if (type_char == 'u' && word_size == 1)
+        type = NPY_UBYTE;
+    else if (type_char == 'u' && word_size == 2)
+        type = NPY_USHORT;
+    else if (type_char == 'u' && word_size == 4)
+        type = NPY_UINT;
+    else if (type_char == 'u' && word_size == 8)
+        type = NPY_ULONGLONG;
+    else if (type_char == 'b' && word_size == 1)
+        type = NPY_BOOL;
+    else if (type_char == 'c' && word_size == 8)
+        type = NPY_CFLOAT;
+    else if (type_char == 'c' && word_size == 16)
+        type = NPY_CDOUBLE;
+    else if (type_char == 'c' && word_size == 32)
+        type = NPY_CLONGDOUBLE;
+    else if (type_char == 'S')
+        type = NPY_STRING;
+    else if (type_char == 'U')
+        type = NPY_UNICODE;
+    else if (type_char == 'V')
+        type = NPY_VOID;
+    else
+        throw std::runtime_error("parse_npy_header: unsupported dtype: " + std::string(1, type_char) + std::to_string(word_size));
+    return type;
+}
+} // namespace cnpy
+
+void cnpy::parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type) {
     //std::string magic_string(buffer,6);
     uint8_t major_version = *reinterpret_cast<uint8_t*>(buffer+6);
     uint8_t minor_version = *reinterpret_cast<uint8_t*>(buffer+7);
@@ -87,21 +173,28 @@ void cnpy::parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector
     }
 
     //endian, word size, data type
-    //byte order code | stands for not applicable. 
+    //byte order code | stands for not applicable.
     //not sure when this applies except for byte array
-    loc1 = header.find("descr")+9;
-    bool littleEndian = (header[loc1] == '<' || header[loc1] == '|' ? true : false);
-    assert(littleEndian);
+    loc1 = header.find("descr");
+    if (loc1 == std::string::npos)
+        throw std::runtime_error("parse_npy_header: failed to find header keyword: 'descr'");
 
-    //char type = header[loc1+1];
-    //assert(type == map_type(T));
+    loc1 += 9;
+    char byteorder = header[loc1];
+    char typechar = header[loc1+1];
 
     std::string str_ws = header.substr(loc1+2);
     loc2 = str_ws.find("'");
-    word_size = atoi(str_ws.substr(0,loc2).c_str());
+    word_size = atoi(str_ws.substr(0, loc2).c_str());
+
+    // Optional: check for littleEndian
+    bool littleEndian = (byteorder == '<' || byteorder == '|');
+    assert(littleEndian);  // Keep or remove depending on your target
+
+    type = cnpy::get_type_from_type_char_and_word_size(typechar, word_size);
 }
 
-void cnpy::parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order) {
+void cnpy::parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type) {
     char buffer[256];
     size_t res = fread(buffer,sizeof(char),11,fp);
     if(res != 11)
@@ -140,16 +233,20 @@ void cnpy::parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& sh
     loc1 = header.find("descr");
     if (loc1 == std::string::npos)
         throw std::runtime_error("parse_npy_header: failed to find header keyword: 'descr'");
-    loc1 += 9;
-    bool littleEndian = (header[loc1] == '<' || header[loc1] == '|' ? true : false);
-    assert(littleEndian);
 
-    //char type = header[loc1+1];
-    //assert(type == map_type(T));
+    loc1 += 9;
+    char byteorder = header[loc1];
+    char typechar = header[loc1+1];
 
     std::string str_ws = header.substr(loc1+2);
     loc2 = str_ws.find("'");
-    word_size = atoi(str_ws.substr(0,loc2).c_str());
+    word_size = atoi(str_ws.substr(0, loc2).c_str());
+
+    // Optional: check for littleEndian
+    bool littleEndian = (byteorder == '<' || byteorder == '|');
+    assert(littleEndian);  // Keep or remove depending on your target
+
+    type = cnpy::get_type_from_type_char_and_word_size(typechar, word_size);
 }
 
 void cnpy::parse_zip_footer(FILE* fp, uint16_t& nrecs, size_t& global_header_size, size_t& global_header_offset)
@@ -179,9 +276,10 @@ cnpy::NpyArray load_the_npy_file(FILE* fp) {
     std::vector<size_t> shape;
     size_t word_size;
     bool fortran_order;
-    cnpy::parse_npy_header(fp,word_size,shape,fortran_order);
+    cnpy::NPY_TYPES type;
+    cnpy::parse_npy_header(fp,word_size,shape,fortran_order, type);
 
-    cnpy::NpyArray arr(shape, word_size, fortran_order);
+    cnpy::NpyArray arr(shape, word_size, fortran_order, type);
     size_t nread = fread(arr.data<char>(),1,arr.num_bytes(),fp);
     if(nread != arr.num_bytes())
         throw std::runtime_error("load_the_npy_file: failed fread");
@@ -217,9 +315,10 @@ cnpy::NpyArray load_the_npz_array(FILE* fp, uint32_t compr_bytes, uint32_t uncom
     std::vector<size_t> shape;
     size_t word_size;
     bool fortran_order;
-    cnpy::parse_npy_header(&buffer_uncompr[0],word_size,shape,fortran_order);
+    cnpy::NPY_TYPES type;
+    cnpy::parse_npy_header(&buffer_uncompr[0],word_size,shape,fortran_order, type);
 
-    cnpy::NpyArray array(shape, word_size, fortran_order);
+    cnpy::NpyArray array(shape, word_size, fortran_order, type);
 
     size_t offset = uncompr_bytes - array.num_bytes();
     memcpy(array.data<unsigned char>(),&buffer_uncompr[0]+offset,array.num_bytes());
