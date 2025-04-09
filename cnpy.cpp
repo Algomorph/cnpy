@@ -101,9 +101,9 @@ void cnpy::parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector
     word_size = atoi(str_ws.substr(0,loc2).c_str());
 }
 
-void cnpy::parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order) {  
+void cnpy::parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order) {
     char buffer[256];
-    size_t res = fread(buffer,sizeof(char),11,fp);       
+    size_t res = fread(buffer,sizeof(char),11,fp);
     if(res != 11)
         throw std::runtime_error("parse_npy_header: failed fread");
     std::string header = fgets(buffer,256,fp);
@@ -234,7 +234,7 @@ cnpy::npz_t cnpy::npz_load(std::string fname) {
         throw std::runtime_error("npz_load: Error! Unable to open file "+fname+"!");
     }
 
-    cnpy::npz_t arrays;  
+    cnpy::npz_t arrays;
 
     while(1) {
         std::vector<char> local_header(30);
@@ -273,7 +273,7 @@ cnpy::npz_t cnpy::npz_load(std::string fname) {
     }
 
     fclose(fp);
-    return arrays;  
+    return arrays;
 }
 
 cnpy::NpyArray cnpy::npz_load(std::string fname, std::string varname) {
@@ -284,7 +284,7 @@ cnpy::NpyArray cnpy::npz_load(std::string fname, std::string varname) {
         {
             fclose(fp);
         }
-    } closer;
+    } closer{};
     closer.fp = fopen(fname.c_str(), "rb");
 
     if(!closer.fp) throw std::runtime_error("npz_load: Unable to open file "+fname);
@@ -309,7 +309,7 @@ cnpy::NpyArray cnpy::npz_load(std::string fname, std::string varname) {
         //read in the extra field
         uint16_t extra_field_len = *(uint16_t*) &local_header[28];
         fseek(closer.fp,extra_field_len,SEEK_CUR); //skip past the extra field
-        
+
         uint16_t compr_method = *reinterpret_cast<uint16_t*>(&local_header[0]+8);
         uint32_t compr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+18);
         uint32_t uncompr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+22);
@@ -347,6 +347,3 @@ cnpy::NpyArray cnpy::npy_load(std::string fname) {
 
     return arr;
 }
-
-
-
