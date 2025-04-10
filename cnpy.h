@@ -21,7 +21,7 @@
 
 namespace cnpy {
 
-    enum NPY_TYPES {    NPY_BOOL=0,
+    enum NPY_TYPE {    NPY_BOOL=0,
         NPY_BYTE, NPY_UBYTE,
         NPY_SHORT, NPY_USHORT,
         NPY_INT, NPY_UINT,
@@ -62,8 +62,8 @@ namespace cnpy {
     };
 
     struct NpyArray {
-        NpyArray(const std::vector<size_t>& _shape, size_t _word_size, bool _fortran_order, NPY_TYPES _type) :
-            shape(_shape), word_size(_word_size), fortran_order(_fortran_order), type(_type)
+        NpyArray(const std::vector<size_t>& _shape, size_t _word_size, bool _fortran_order, NPY_TYPE _dtype) :
+            shape(_shape), word_size(_word_size), fortran_order(_fortran_order), dtype(_dtype)
         {
             num_vals = 1;
             for(size_t i = 0;i < shape.size();i++) num_vals *= shape[i];
@@ -97,7 +97,7 @@ namespace cnpy {
         std::vector<size_t> shape;
         size_t word_size;
         bool fortran_order;
-        NPY_TYPES type;
+        NPY_TYPE dtype;
         size_t num_vals;
     };
    
@@ -105,10 +105,10 @@ namespace cnpy {
 
     char BigEndianTest();
     char map_type(const std::type_info& t);
-    NPY_TYPES map_type_to_npy_types(const std::type_info& t);
+    NPY_TYPE map_type_to_npy_types(const std::type_info& t);
     template<typename T> std::vector<char> create_npy_header(const std::vector<size_t>& shape);
-    void parse_npy_header(FILE* fp,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type);
-    void parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type);
+    void parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPE& type);
+    void parse_npy_header(unsigned char* buffer, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPE& type);
     void parse_zip_footer(FILE* fp, uint16_t& nrecs, size_t& global_header_size, size_t& global_header_offset);
     npz_t npz_load(std::string fname);
     NpyArray npz_load(std::string fname, std::string varname);
@@ -137,7 +137,7 @@ namespace cnpy {
             //file exists. we need to append to it. read the header, modify the array size
             size_t word_size;
             bool fortran_order;
-            NPY_TYPES type;
+            NPY_TYPE type;
             parse_npy_header(fp,word_size,true_data_shape,fortran_order,type);
             assert(!fortran_order);
 

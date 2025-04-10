@@ -44,7 +44,7 @@ char cnpy::map_type(const std::type_info& t)
     else return '?';
 }
 
-cnpy::NPY_TYPES cnpy::map_type_to_npy_types(const std::type_info& t) {
+cnpy::NPY_TYPE cnpy::map_type_to_npy_types(const std::type_info& t) {
     if(t == typeid(float) ) return NPY_FLOAT;
     if(t == typeid(double) ) return NPY_DOUBLE;
     if(t == typeid(long double) ) return NPY_LONGDOUBLE;
@@ -100,9 +100,9 @@ template<> std::vector<char>& cnpy::operator+=(std::vector<char>& lhs, const cha
 
 
 namespace cnpy{
-static NPY_TYPES get_type_from_type_char_and_word_size(char type_char, size_t word_size) {
-    cnpy::NPY_TYPES type;
-    using cnpy::NPY_TYPES;
+static NPY_TYPE get_type_from_type_char_and_word_size(char type_char, size_t word_size) {
+    cnpy::NPY_TYPE type;
+    using cnpy::NPY_TYPE;
     if (type_char == 'f' && word_size == 4)
         type = NPY_FLOAT;
     else if (type_char == 'f' && word_size == 8)
@@ -145,7 +145,7 @@ static NPY_TYPES get_type_from_type_char_and_word_size(char type_char, size_t wo
 }
 } // namespace cnpy
 
-void cnpy::parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type) {
+void cnpy::parse_npy_header(unsigned char* buffer, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPE& type) {
     //std::string magic_string(buffer,6);
     uint8_t major_version = *reinterpret_cast<uint8_t*>(buffer+6);
     uint8_t minor_version = *reinterpret_cast<uint8_t*>(buffer+7);
@@ -194,7 +194,7 @@ void cnpy::parse_npy_header(unsigned char* buffer,size_t& word_size, std::vector
     type = cnpy::get_type_from_type_char_and_word_size(typechar, word_size);
 }
 
-void cnpy::parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPES& type) {
+void cnpy::parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPE& type) {
     char buffer[256];
     size_t res = fread(buffer,sizeof(char),11,fp);
     if(res != 11)
@@ -276,7 +276,7 @@ cnpy::NpyArray load_the_npy_file(FILE* fp) {
     std::vector<size_t> shape;
     size_t word_size;
     bool fortran_order;
-    cnpy::NPY_TYPES type;
+    cnpy::NPY_TYPE type;
     cnpy::parse_npy_header(fp,word_size,shape,fortran_order, type);
 
     cnpy::NpyArray arr(shape, word_size, fortran_order, type);
@@ -315,7 +315,7 @@ cnpy::NpyArray load_the_npz_array(FILE* fp, uint32_t compr_bytes, uint32_t uncom
     std::vector<size_t> shape;
     size_t word_size;
     bool fortran_order;
-    cnpy::NPY_TYPES type;
+    cnpy::NPY_TYPE type;
     cnpy::parse_npy_header(&buffer_uncompr[0],word_size,shape,fortran_order, type);
 
     cnpy::NpyArray array(shape, word_size, fortran_order, type);

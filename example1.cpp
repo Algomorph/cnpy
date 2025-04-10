@@ -28,7 +28,7 @@ int main()
     //make sure the loaded data matches the saved data
     assert(arr.word_size == sizeof(std::complex<double>));
     assert(arr.shape.size() == 3 && arr.shape[0] == Nz && arr.shape[1] == Ny && arr.shape[2] == Nx);
-    assert(arr.type == cnpy::NPY_CDOUBLE);
+    assert(arr.dtype == cnpy::NPY_CDOUBLE);
     for(int i = 0; i < Nx*Ny*Nz;i++) assert(data[i] == loaded_data[i]);
 
     //append the same data to file
@@ -54,7 +54,7 @@ int main()
     double* mv1 = arr_mv1.data<double>();
     assert(arr_mv1.shape.size() == 1 && arr_mv1.shape[0] == 1);
     assert(mv1[0] == myVar1);
-    assert(arr_mv1.type == cnpy::NPY_DOUBLE);
+    assert(arr_mv1.dtype == cnpy::NPY_DOUBLE);
 
     //create random int64_t data
     std::vector<int64_t> data_int64_t(Nx*Ny*Nz);
@@ -73,7 +73,7 @@ int main()
     //make sure the loaded data matches the saved data
     assert(arr_int64_t.word_size == sizeof(int64_t));
     assert(arr_int64_t.shape.size() == 3 && arr_int64_t.shape[0] == Nz && arr_int64_t.shape[1] == Ny && arr_int64_t.shape[2] == Nx);
-    assert(arr_int64_t.type == cnpy::NPY_LONGLONG);
+    assert(arr_int64_t.dtype == cnpy::NPY_LONGLONG);
     for(int i = 0; i < Nx*Ny*Nz;i++) assert(data_int64_t[i] == loaded_data_int64_t[i]);
 
 }
