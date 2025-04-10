@@ -4,6 +4,7 @@
 #include<iostream>
 #include<map>
 #include<string>
+#include <random>
 
 const int Nx = 128;
 const int Ny = 64;
@@ -27,6 +28,7 @@ int main()
     //make sure the loaded data matches the saved data
     assert(arr.word_size == sizeof(std::complex<double>));
     assert(arr.shape.size() == 3 && arr.shape[0] == Nz && arr.shape[1] == Ny && arr.shape[2] == Nx);
+    assert(arr.type == cnpy::NPY_CDOUBLE);
     for(int i = 0; i < Nx*Ny*Nz;i++) assert(data[i] == loaded_data[i]);
 
     //append the same data to file
@@ -52,4 +54,26 @@ int main()
     double* mv1 = arr_mv1.data<double>();
     assert(arr_mv1.shape.size() == 1 && arr_mv1.shape[0] == 1);
     assert(mv1[0] == myVar1);
+    assert(arr_mv1.type == cnpy::NPY_DOUBLE);
+
+    //create random int64_t data
+    std::vector<int64_t> data_int64_t(Nx*Ny*Nz);
+    std::mt19937_64 random_generator(12345);
+    std::uniform_int_distribution<int64_t> distribution_int64_t(std::numeric_limits<int64_t>::min(),
+                                                                std::numeric_limits<int64_t>::max());
+    for(int i = 0;i < Nx*Ny*Nz;i++) data_int64_t[i] = distribution_int64_t(random_generator);
+
+    //save it to file
+    cnpy::npy_save("arr_int64_t.npy",&data_int64_t[0],{Nz,Ny,Nx},"w");
+
+    //load it into a new array
+    cnpy::NpyArray arr_int64_t = cnpy::npy_load("arr_int64_t.npy");
+    int64_t* loaded_data_int64_t = arr_int64_t.data<int64_t>();
+
+    //make sure the loaded data matches the saved data
+    assert(arr_int64_t.word_size == sizeof(int64_t));
+    assert(arr_int64_t.shape.size() == 3 && arr_int64_t.shape[0] == Nz && arr_int64_t.shape[1] == Ny && arr_int64_t.shape[2] == Nx);
+    assert(arr_int64_t.type == cnpy::NPY_LONGLONG);
+    for(int i = 0; i < Nx*Ny*Nz;i++) assert(data_int64_t[i] == loaded_data_int64_t[i]);
+
 }
