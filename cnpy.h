@@ -212,7 +212,7 @@ namespace cnpy {
             fp = fopen(zipname.c_str(),"wb");
         }
 
-        std::vector<char> npy_header = create_npy_header<T>(shape, false);
+        std::vector<char> npy_header = create_npy_header<T>(shape, fortran_order);
 
         size_t nels = std::accumulate(shape.begin(),shape.end(),1,std::multiplies<size_t>());
         size_t nbytes = nels*sizeof(T) + npy_header.size();
