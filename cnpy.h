@@ -106,7 +106,7 @@ namespace cnpy {
     char BigEndianTest();
     char map_type(const std::type_info& t);
     NPY_TYPE map_type_to_npy_types(const std::type_info& t);
-    template<typename T> std::vector<char> create_npy_header(const std::vector<size_t>& shape);
+    template<typename T> std::vector<char> create_npy_header(const std::vector<size_t>& shape, bool fortran_order);
     void parse_npy_header(FILE* fp, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPE& type);
     void parse_npy_header(unsigned char* buffer, size_t& word_size, std::vector<size_t>& shape, bool& fortran_order, NPY_TYPE& type);
     void parse_zip_footer(FILE* fp, uint16_t& nrecs, size_t& global_header_size, size_t& global_header_offset);
@@ -127,7 +127,10 @@ namespace cnpy {
     template<> std::vector<char>& operator+=(std::vector<char>& lhs, const char* rhs);
 
 
-    template<typename T> void npy_save(std::string fname, const T* data, const std::vector<size_t> shape, std::string mode = "w") {
+    template<typename T> void npy_save(
+        std::string fname, const T* data, const std::vector<size_t> shape, std::string mode = "w",
+        bool fortran_order = false
+    ) {
         FILE* fp = NULL;
         std::vector<size_t> true_data_shape; //if appending, the shape of existing + new data
 
@@ -136,10 +139,10 @@ namespace cnpy {
         if(fp) {
             //file exists. we need to append to it. read the header, modify the array size
             size_t word_size;
-            bool fortran_order;
+            bool existing_file_fortran_order;
             NPY_TYPE type;
-            parse_npy_header(fp,word_size,true_data_shape,fortran_order,type);
-            assert(!fortran_order);
+            parse_npy_header(fp, word_size, true_data_shape, existing_file_fortran_order, type);
+            assert(fortran_order == existing_file_fortran_order);
 
             if(word_size != sizeof(T)) {
                 std::cout<<"libnpy error: "<<fname<<" has word size "<<word_size<<" but npy_save appending data sized "<<sizeof(T)<<"\n";
@@ -167,7 +170,7 @@ namespace cnpy {
             true_data_shape = shape;
         }
 
-        std::vector<char> header = create_npy_header<T>(true_data_shape);
+        std::vector<char> header = create_npy_header<T>(true_data_shape, fortran_order);
         size_t nels = std::accumulate(shape.begin(),shape.end(),1,std::multiplies<size_t>());
 
         fseek(fp,0,SEEK_SET);
@@ -177,7 +180,7 @@ namespace cnpy {
         fclose(fp);
     }
 
-    template<typename T> void npz_save(std::string zipname, std::string fname, const T* data, const std::vector<size_t>& shape, std::string mode = "w")
+    template<typename T> void npz_save(std::string zipname, std::string fname, const T* data, const std::vector<size_t>& shape, std::string mode = "w", bool fortran_order = false)
     {
         //first, append a .npy to the fname
         fname += ".npy";
@@ -209,7 +212,7 @@ namespace cnpy {
             fp = fopen(zipname.c_str(),"wb");
         }
 
-        std::vector<char> npy_header = create_npy_header<T>(shape);
+        std::vector<char> npy_header = create_npy_header<T>(shape, false);
 
         size_t nels = std::accumulate(shape.begin(),shape.end(),1,std::multiplies<size_t>());
         size_t nbytes = nels*sizeof(T) + npy_header.size();
@@ -267,26 +270,29 @@ namespace cnpy {
         fclose(fp);
     }
 
-    template<typename T> void npy_save(std::string fname, const std::vector<T> data, std::string mode = "w") {
+    template<typename T> void npy_save(std::string fname, const std::vector<T> data, std::string mode = "w", bool fortran_order = false) {
         std::vector<size_t> shape;
         shape.push_back(data.size());
-        npy_save(fname, &data[0], shape, mode);
+        npy_save(fname, &data[0], shape, mode, fortran_order);
     }
 
-    template<typename T> void npz_save(std::string zipname, std::string fname, const std::vector<T> data, std::string mode = "w") {
+    template<typename T> void npz_save(std::string zipname, std::string fname, const std::vector<T> data, std::string mode = "w", bool fortran_order = false) {
         std::vector<size_t> shape;
         shape.push_back(data.size());
-        npz_save(zipname, fname, &data[0], shape, mode);
+        npz_save(zipname, fname, &data[0], shape, mode, fortran_order);
     }
 
-    template<typename T> std::vector<char> create_npy_header(const std::vector<size_t>& shape) {  
-
+    template<typename T> std::vector<char> create_npy_header(const std::vector<size_t>& shape, bool fortran_order) {
         std::vector<char> dict;
         dict += "{'descr': '";
         dict += BigEndianTest();
         dict += map_type(typeid(T));
         dict += std::to_string(sizeof(T));
-        dict += "', 'fortran_order': False, 'shape': (";
+        std::stringstream ss;
+        ss << "', 'fortran_order': ";
+        ss << (fortran_order ? "True": "False");
+        dict += ss.str().c_str();
+        dict += ", 'shape': (";
         dict += std::to_string(shape[0]);
         for(size_t i = 1;i < shape.size();i++) {
             dict += ", ";

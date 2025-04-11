@@ -19,7 +19,7 @@ int main()
     for(int i = 0;i < Nx*Ny*Nz;i++) data[i] = std::complex<double>(rand(),rand());
 
     //save it to file
-    cnpy::npy_save("arr1.npy",&data[0],{Nz,Ny,Nx},"w");
+    cnpy::npy_save("arr1.npy", &data[0], {Nz, Ny, Nx}, "w", false);
 
     //load it into a new array
     cnpy::NpyArray arr = cnpy::npy_load("arr1.npy");
@@ -33,7 +33,7 @@ int main()
 
     //append the same data to file
     //npy array on file now has shape (Nz+Nz,Ny,Nx)
-    cnpy::npy_save("arr1.npy",&data[0],{Nz,Ny,Nx},"a");
+    cnpy::npy_save("arr1.npy", &data[0], {Nz, Ny, Nx}, "a", false);
 
     //now write to an npz file
     //non-array variables are treated as 1D arrays with 1 element
@@ -64,7 +64,7 @@ int main()
     for(int i = 0;i < Nx*Ny*Nz;i++) data_int64_t[i] = distribution_int64_t(random_generator);
 
     //save it to file
-    cnpy::npy_save("arr_int64_t.npy",&data_int64_t[0],{Nz,Ny,Nx},"w");
+    cnpy::npy_save("arr_int64_t.npy", &data_int64_t[0], {Nz, Ny, Nx}, "w", false);
 
     //load it into a new array
     cnpy::NpyArray arr_int64_t = cnpy::npy_load("arr_int64_t.npy");
