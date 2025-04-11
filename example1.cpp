@@ -10,6 +10,18 @@ const int Nx = 128;
 const int Ny = 64;
 const int Nz = 32;
 
+// use for debugging if needed
+template<typename T>
+void pretty_print_2d_data(T* data, int row_count, int column_count) {
+    for(int i_row = 0; i_row < row_count; i_row++){
+        for (int i_column = 0; i_column < column_count; i_column++) {
+            int fortran_index = i_row * column_count + i_column;
+            std::cout << (i_column == 0 ? "": ", ") << data[fortran_index];
+        }
+        std::cout << std::endl;
+    }
+}
+
 int main()
 {
     //set random seed so that result is reproducible (for testing)
@@ -75,5 +87,27 @@ int main()
     assert(arr_int64_t.shape.size() == 3 && arr_int64_t.shape[0] == Nz && arr_int64_t.shape[1] == Ny && arr_int64_t.shape[2] == Nx);
     assert(arr_int64_t.dtype == cnpy::NPY_LONGLONG);
     for(int i = 0; i < Nx*Ny*Nz;i++) assert(data_int64_t[i] == loaded_data_int64_t[i]);
+
+    const int fortran_column_count = 5;
+    const int fortran_row_count = 10;
+    std::vector<int64_t> data_int64_t_fortran(fortran_column_count * fortran_row_count);
+    int64_t element = 0;
+    for(int i = 0; i < fortran_column_count * fortran_row_count; i++, element++){
+        data_int64_t_fortran[i] = element;
+    }
+    //save it to file
+    cnpy::npy_save("arr_int64_t_fortran.npy", &data_int64_t_fortran[0], {fortran_row_count, fortran_column_count}, "w", true);
+
+    //load it into a new array
+    cnpy::NpyArray arr_int64_t_fortran = cnpy::npy_load("arr_int64_t_fortran.npy");
+    int64_t* loaded_data_int64_t_fortran = arr_int64_t_fortran.data<int64_t>();
+
+    //make sure the loaded data matches the saved data
+    assert(arr_int64_t_fortran.word_size == sizeof(int64_t));
+    assert(arr_int64_t_fortran.shape.size() == 2 && arr_int64_t_fortran.shape[0] == fortran_row_count && arr_int64_t_fortran.shape[1] == fortran_column_count);
+    assert(arr_int64_t_fortran.dtype == cnpy::NPY_LONGLONG);
+    assert(arr_int64_t_fortran.fortran_order == true);
+
+    for(int i = 0; i < fortran_column_count * fortran_row_count; i++) assert(data_int64_t_fortran[i] == loaded_data_int64_t_fortran[i]);
 
 }
