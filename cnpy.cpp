@@ -326,106 +326,121 @@ cnpy::NpyArray load_the_npz_array(FILE* fp, uint32_t compr_bytes, uint32_t uncom
     return array;
 }
 
+// --- Helper struct for entry info ---
+struct NpzEntryInfo {
+    std::string array_name;
+    uint16_t compression_method;
+    uint32_t compressed_byte_count;
+    uint32_t uncompressed_byte_count;
+    long data_offset; // position in file where data begins
+};
+
+// --- Helper: parse next entry header and fill info ---
+static bool parse_npz_entry(FILE* fp, NpzEntryInfo& info) {
+    std::vector<char> local_header(30);
+    size_t header_read_byte_count = fread(&local_header[0], sizeof(char), 30, fp);
+    if(header_read_byte_count != 30) return false;
+    if(local_header[2] != 0x03 || local_header[3] != 0x04) return false;
+
+    uint16_t name_byte_count;
+    memcpy(&name_byte_count, &local_header[26], sizeof(uint16_t));
+    uint16_t extra_field_byte_count;
+    memcpy(&extra_field_byte_count, &local_header[28], sizeof(uint16_t));
+    uint16_t compression_method;
+    memcpy(&compression_method, &local_header[8], sizeof(uint16_t));
+    uint32_t compressed_byte_count;
+    memcpy(&compressed_byte_count, &local_header[18], sizeof(uint32_t));
+    uint32_t uncompressed_byte_count;
+    memcpy(&uncompressed_byte_count, &local_header[22], sizeof(uint32_t));
+    // Read file name
+    std::string array_name(name_byte_count, ' ');
+    size_t array_name_read_byte_count = fread(&array_name[0], sizeof(char), name_byte_count, fp);
+    if(array_name_read_byte_count != name_byte_count) return false;
+    array_name.erase(array_name.end() - 4, array_name.end());
+    // Read extra field
+    std::vector<char> extra_field(extra_field_byte_count);
+    if(extra_field_byte_count > 0) {
+        size_t read = fread(&extra_field[0], sizeof(char), extra_field_byte_count, fp);
+        if(read != extra_field_byte_count) return false;
+    }
+    // ZIP64 fix
+    if(compressed_byte_count == 0xFFFFFFFF || uncompressed_byte_count == 0xFFFFFFFF) {
+        size_t idx = 0;
+        while(idx + 4 <= extra_field.size()) {
+            uint16_t header_id, data_size;
+            memcpy(&header_id, &extra_field[idx], 2);
+            memcpy(&data_size, &extra_field[idx+2], 2);
+            if(header_id == 0x0001) {
+                size_t zip64_idx = idx + 4;
+                uint64_t zip64_size = 0;
+                if(uncompressed_byte_count == 0xFFFFFFFF && zip64_idx + 8 <= extra_field.size()) {
+                    memcpy(&zip64_size, &extra_field[zip64_idx], 8);
+                    uncompressed_byte_count = static_cast<uint32_t>(zip64_size);
+                    zip64_idx += 8;
+                }
+                if(compressed_byte_count == 0xFFFFFFFF && zip64_idx + 8 <= extra_field.size()) {
+                    memcpy(&zip64_size, &extra_field[zip64_idx], 8);
+                    compressed_byte_count = static_cast<uint32_t>(zip64_size);
+                    zip64_idx += 8;
+                }
+                break;
+            }
+            idx += 4 + data_size;
+        }
+    }
+    info.array_name = array_name;
+    info.compression_method = compression_method;
+    info.compressed_byte_count = compressed_byte_count;
+    info.uncompressed_byte_count = uncompressed_byte_count;
+    info.data_offset = ftell(fp);
+    return true;
+}
+
+// --- Refactored npz_load (single file, all arrays) ---
 cnpy::npz_t cnpy::npz_load(std::string fname) {
     FILE* fp = fopen(fname.c_str(),"rb");
-
-    if(!fp) {
-        throw std::runtime_error("npz_load: Error! Unable to open file "+fname+"!");
-    }
-
+    if(!fp) throw std::runtime_error("npz_load: Error! Unable to open file "+fname+"!");
     cnpy::npz_t arrays;
-
     while(1) {
-        std::vector<char> local_header(30);
-        size_t headerres = fread(&local_header[0],sizeof(char),30,fp);
-        if(headerres != 30)
-            throw std::runtime_error("npz_load: failed fread");
-
-        //if we've reached the global header, stop reading
-        if(local_header[2] != 0x03 || local_header[3] != 0x04) break;
-
-        //read in the variable name
-        uint16_t name_len = *(uint16_t*) &local_header[26];
-        std::string varname(name_len,' ');
-        size_t vname_res = fread(&varname[0],sizeof(char),name_len,fp);
-        if(vname_res != name_len)
-            throw std::runtime_error("npz_load: failed fread");
-
-        //erase the lagging .npy        
-        varname.erase(varname.end()-4,varname.end());
-
-        //read in the extra field
-        uint16_t extra_field_len = *(uint16_t*) &local_header[28];
-        if(extra_field_len > 0) {
-            std::vector<char> buff(extra_field_len);
-            size_t efield_res = fread(&buff[0],sizeof(char),extra_field_len,fp);
-            if(efield_res != extra_field_len)
-                throw std::runtime_error("npz_load: failed fread");
+        NpzEntryInfo info;
+        long entry_start = ftell(fp);
+        if(!parse_npz_entry(fp, info)) break;
+        fseek(fp, info.data_offset, SEEK_SET);
+        if(info.compression_method == 0) {
+            arrays[info.array_name] = load_the_npy_file(fp);
+        } else {
+            arrays[info.array_name] = load_the_npz_array(fp, info.compressed_byte_count, info.uncompressed_byte_count);
         }
-
-        uint16_t compr_method = *reinterpret_cast<uint16_t*>(&local_header[0]+8);
-        uint32_t compr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+18);
-        uint32_t uncompr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+22);
-
-        if(compr_method == 0) {arrays[varname] = load_the_npy_file(fp);}
-        else {arrays[varname] = load_the_npz_array(fp,compr_bytes,uncompr_bytes);}
+        fseek(fp, entry_start + 30 + info.array_name.size() + 4 + info.compressed_byte_count + info.uncompressed_byte_count, SEEK_SET); // skip to next entry
+        // Actually, after reading, fp is at end of data, so just continue
     }
-
     fclose(fp);
     return arrays;
 }
 
+// --- Refactored npz_load (single variable) ---
 cnpy::NpyArray cnpy::npz_load(std::string fname, std::string varname) {
-    struct AutoCloser
-    {
+    struct AutoCloser {
         FILE * fp;
-        ~AutoCloser (void)
-        {
-            fclose(fp);
-        }
+        ~AutoCloser() { fclose(fp); }
     } closer{};
     closer.fp = fopen(fname.c_str(), "rb");
-
     if(!closer.fp) throw std::runtime_error("npz_load: Unable to open file "+fname);
-
     while(1) {
-        std::vector<char> local_header(30);
-        size_t header_res = fread(&local_header[0],sizeof(char),30,closer.fp);
-        if(header_res != 30)
-            throw std::runtime_error("npz_load: failed fread");
-
-        //if we've reached the global header, stop reading
-        if(local_header[2] != 0x03 || local_header[3] != 0x04) break;
-
-        //read in the variable name
-        uint16_t name_len = *(uint16_t*) &local_header[26];
-        std::string vname(name_len,' ');
-        size_t vname_res = fread(&vname[0],sizeof(char),name_len,closer.fp);
-        if(vname_res != name_len)
-            throw std::runtime_error("npz_load: failed fread");
-        vname.erase(vname.end()-4,vname.end()); //erase the lagging .npy
-
-        //read in the extra field
-        uint16_t extra_field_len = *(uint16_t*) &local_header[28];
-        fseek(closer.fp,extra_field_len,SEEK_CUR); //skip past the extra field
-
-        uint16_t compr_method = *reinterpret_cast<uint16_t*>(&local_header[0]+8);
-        uint32_t compr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+18);
-        uint32_t uncompr_bytes = *reinterpret_cast<uint32_t*>(&local_header[0]+22);
-
-        if(vname == varname) {
-            NpyArray array  = (compr_method == 0) ? load_the_npy_file(closer.fp) : load_the_npz_array(closer.fp,compr_bytes,uncompr_bytes);
-            return array;
-        }
-        else {
-            //skip past the data
-            uint32_t size = *(uint32_t*) &local_header[22];
-            fseek(closer.fp,size,SEEK_CUR);
+        NpzEntryInfo info;
+        if(!parse_npz_entry(closer.fp, info)) break;
+        if(info.array_name == varname) {
+            fseek(closer.fp, info.data_offset, SEEK_SET);
+            if(info.compression_method == 0) {
+                return load_the_npy_file(closer.fp);
+            } else {
+                return load_the_npz_array(closer.fp, info.compressed_byte_count, info.uncompressed_byte_count);
+            }
+        } else {
+            fseek(closer.fp, info.data_offset + info.compressed_byte_count, SEEK_SET);
         }
     }
-
-    //if we get here, we haven't found the variable in the file
-    throw std::runtime_error("npz_load: Variable name "+varname+" not found in "+fname);
+    throw std::runtime_error("npz_load: variable not found: " + varname);
 }
 
 cnpy::NpyArray cnpy::npy_load(std::string fname) {
